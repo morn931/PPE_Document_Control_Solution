@@ -1,0 +1,802 @@
+{
+  "properties": {
+    "connectionReferences": {
+      "shared_commondataserviceforapps": {
+        "api": {
+          "name": "shared_commondataserviceforapps"
+        },
+        "connection": {
+          "connectionReferenceLogicalName": "new_sharedcommondataserviceforapps_3b24d"
+        },
+        "runtimeSource": "embedded"
+      },
+      "shared_office365": {
+        "api": {
+          "name": "shared_office365"
+        },
+        "connection": {
+          "connectionReferenceLogicalName": "new_sharedoffice365_912f4"
+        },
+        "runtimeSource": "embedded"
+      },
+      "shared_sharepointonline": {
+        "api": {
+          "name": "shared_sharepointonline"
+        },
+        "connection": {
+          "connectionReferenceLogicalName": "new_sharedsharepointonline_a215c"
+        },
+        "runtimeSource": "embedded"
+      }
+    },
+    "definition": {
+      "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+      "contentVersion": "1.0.0.0",
+      "parameters": {
+        "$authentication": {
+          "defaultValue": {},
+          "type": "SecureObject"
+        },
+        "$connections": {
+          "defaultValue": {},
+          "type": "Object"
+        }
+      },
+      "triggers": {
+        "When_a_row_is_added,_modified_or_deleted": {
+          "type": "OpenApiConnectionWebhook",
+          "inputs": {
+            "parameters": {
+              "subscriptionRequest/message": 1,
+              "subscriptionRequest/entityname": "crafe_flowrequestsppe",
+              "subscriptionRequest/scope": 2
+            },
+            "host": {
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+              "operationId": "SubscribeWebhookTrigger",
+              "connectionName": "shared_commondataserviceforapps"
+            }
+          },
+          "metadata": {
+            "operationMetadataId": "85f29787-805f-41ca-a890-05e185f3fd44"
+          }
+        }
+      },
+      "actions": {
+        "Compose_Documents": {
+          "type": "Compose",
+          "inputs": "@split(coalesce(triggerBody()?['text'], ''), ',')\r\n\r\n",
+          "runAfter": {
+            "Compose_TriggerValues": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "96b8a4e0-bd6d-4cd2-a7e5-5b3d4edab2e2"
+          }
+        },
+        "Condition": {
+          "type": "If",
+          "expression": {
+            "and": [
+              {
+                "equals": [
+                  "@greater(length(split(triggerBody()?['crafe_docids'], ',')), 0)",
+                  true
+                ]
+              }
+            ]
+          },
+          "actions": {
+            "Compose_ODataFilter": {
+              "type": "Compose",
+              "inputs": "@join(body('SelectFilterStrings'), ' or ')",
+              "runAfter": {
+                "SelectFilterStrings": [
+                  "Succeeded"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "d5a72d97-a36c-4021-99e8-2c3a2946e5f8"
+              }
+            },
+            "SelectFilterStrings": {
+              "type": "Select",
+              "inputs": {
+                "from": "@outputs('Parse_DocIDs')",
+                "select": "@concat('ID eq ', item())\r\n"
+              },
+              "runAfter": {
+                "JoinDocIDs": [
+                  "Succeeded"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "d37b1b29-72b5-4630-951c-d2a494527181"
+              }
+            },
+            "Send_an_email_(V2)": {
+              "type": "OpenApiConnection",
+              "inputs": {
+                "parameters": {
+                  "emailMessage/To": "@outputs('Compose_Reviewers')",
+                  "emailMessage/Subject": "Document Approval Request:",
+                  "emailMessage/Body": "<p class=\"editor-paragraph\">&lt;p&gt;&lt;strong&gt;The following document(s) are available for your approval:&lt;/strong&gt;&lt;/p&gt;</p><p class=\"editor-paragraph\"><br></p><br><p class=\"editor-paragraph\"><br>@{variables('varAppLinkBody')}<br></p><br>",
+                  "emailMessage/Importance": "Normal"
+                },
+                "host": {
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365",
+                  "operationId": "SendEmailV2",
+                  "connectionName": "shared_office365"
+                }
+              },
+              "runAfter": {
+                "Append_to_string_variable_1": [
+                  "Succeeded"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "6375ef52-80f6-4d59-a911-685b797cf37a"
+              }
+            },
+            "ParseDocIDs": {
+              "type": "ParseJson",
+              "inputs": {
+                "content": "@body('SelectFilterStrings')",
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "runAfter": {
+                "Apply_to_each_document": [
+                  "Succeeded"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "f714a4e1-6dfb-4f27-8cb8-99e9050834e8"
+              }
+            },
+            "ParseReviewers": {
+              "type": "ParseJson",
+              "inputs": {
+                "content": "@json(coalesce(triggerBody()?['crafe_reviewers'], '[]'))\r\n",
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "Mail": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "Mail"
+                    ]
+                  }
+                }
+              },
+              "runAfter": {
+                "Compose_Test": [
+                  "Succeeded"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "8e20bb8f-22ae-44c0-bc4a-ddfa484c7042"
+              }
+            },
+            "ReviewerEmailsOnly": {
+              "type": "Select",
+              "inputs": {
+                "from": "@body('ParseReviewers')",
+                "select": "@item()['Mail']\r\n"
+              },
+              "runAfter": {
+                "ParseReviewers": [
+                  "Succeeded"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "9b8fe25e-e4e8-4b33-aee9-6771e391110c"
+              }
+            },
+            "ComposeCleanEmails": {
+              "type": "Compose",
+              "inputs": "@join(body('ReviewerEmailsOnly'), ';')\r\n",
+              "runAfter": {
+                "ReviewerEmailsOnly": [
+                  "Succeeded"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "68313b74-8d21-4c88-98a4-f6e2496bc1da"
+              }
+            },
+            "Apply_to_each_document": {
+              "type": "Foreach",
+              "foreach": "@outputs('Get_files_(properties_only)')?['body/value']\r\n",
+              "actions": {
+                "Append_to_string_variable": {
+                  "type": "AppendToStringVariable",
+                  "inputs": {
+                    "name": "varEmailBody",
+                    "value": "<p>\n<strong>Title:</strong> @{items('Apply_to_each_document')?['Title']} <br />\n<strong>Description:</strong> @{items('Apply_to_each_document')?['Description']} <br />\n<strong>Due Date:</strong> @{items('Apply_to_each_document')?['DueDate']} <br />\n</p>\n<hr />\n\n\n\n\n\n\n\n"
+                  },
+                  "runAfter": {
+                    "Append_to_array_variable": [
+                      "Succeeded"
+                    ]
+                  },
+                  "metadata": {
+                    "operationMetadataId": "482a59bf-7d45-42d4-bb26-2891398fb667"
+                  }
+                },
+                "Switch_2": {
+                  "type": "Switch",
+                  "expression": "@outputs('Compose_LibraryName')",
+                  "default": {
+                    "actions": {}
+                  },
+                  "cases": {
+                    "Case": {
+                      "actions": {
+                        "Set_variable_2": {
+                          "type": "SetVariable",
+                          "inputs": {
+                            "name": "varDirectFileURL",
+                            "value": "@{outputs('ComposeDirectFileURL_Fluor')}"
+                          },
+                          "metadata": {
+                            "operationMetadataId": "6f4844e6-8672-42ab-9a1a-bc7c9aa24a10"
+                          }
+                        }
+                      },
+                      "case": "Fluor Vendor Data Approvals"
+                    },
+                    "Case_2": {
+                      "actions": {
+                        "Set_variable_3": {
+                          "type": "SetVariable",
+                          "inputs": {
+                            "name": "varDirectFileURL",
+                            "value": "@{outputs('ComposeDirectFileURL_V2')}"
+                          },
+                          "metadata": {
+                            "operationMetadataId": "91bd7f42-7c35-42e2-94c5-d39a9bf15b26"
+                          }
+                        }
+                      },
+                      "case": "Vendor 2 Data Approvals"
+                    },
+                    "Case_3": {
+                      "actions": {
+                        "Set_variable_4": {
+                          "type": "SetVariable",
+                          "inputs": {
+                            "name": "varDirectFileURL",
+                            "value": "@{outputs('ComposeDirectFileURL_PPE')}"
+                          },
+                          "metadata": {
+                            "operationMetadataId": "73759aa9-dbc4-4f93-bba3-280d1113b6fe"
+                          }
+                        }
+                      },
+                      "case": "PPE Data Approvals"
+                    }
+                  },
+                  "runAfter": {
+                    "Switch": [
+                      "Succeeded"
+                    ]
+                  },
+                  "metadata": {
+                    "operationMetadataId": "4ce5556b-4325-4e52-8457-bb1e8f889826"
+                  }
+                },
+                "Switch": {
+                  "type": "Switch",
+                  "expression": "@outputs('Compose_LibraryName')",
+                  "default": {
+                    "actions": {}
+                  },
+                  "cases": {
+                    "Case-1": {
+                      "actions": {
+                        "ComposeDirectFileURL_Fluor": {
+                          "type": "Compose",
+                          "inputs": "@concat(\r\n  'https://ppetechcoza.sharepoint.com/sites/DocumentControl/Fluor%20Vendor%20Data%20Approvals/Forms/AllItems.aspx?id=',\r\n  encodeUriComponent(concat(\r\n    '/sites/DocumentControl/Fluor Vendor Data Approvals/',\r\n    items('Apply_to_each_document')?['{FilenameWithExtension}']\r\n  )),\r\n  '&parent=%2Fsites%2FDocumentControl%2FFluor%20Vendor%20Data%20Approvals'\r\n)",
+                          "metadata": {
+                            "operationMetadataId": "cc241ddf-2516-485a-b1cb-866bf56d24a6"
+                          }
+                        }
+                      },
+                      "case": "Fluor Vendor Data Approvals"
+                    },
+                    "Case_2-1": {
+                      "actions": {
+                        "ComposeDirectFileURL_V2": {
+                          "type": "Compose",
+                          "inputs": "@concat(\r\n  'https://ppetechcoza.sharepoint.com/sites/DocumentControl/Vendor%202%20Data%20Approvals/Forms/AllItems.aspx?id=',\r\n  encodeUriComponent(concat(\r\n    '/sites/DocumentControl/Vendor 2 Data Approvals/',\r\n    items('Apply_to_each_document')?['{FilenameWithExtension}']\r\n  )),\r\n  '&parent=%2Fsites%2FDocumentControl%2FVendor%202%20Data%20Approvals'\r\n)",
+                          "metadata": {
+                            "operationMetadataId": "86e4e094-0720-4077-b0d5-e1c2299c0be6"
+                          }
+                        }
+                      },
+                      "case": "Vendor 2 Data Approvals"
+                    },
+                    "Case_3-1": {
+                      "actions": {
+                        "ComposeDirectFileURL_PPE": {
+                          "type": "Compose",
+                          "inputs": "@concat(\r\n  'https://ppetechcoza.sharepoint.com/sites/DocumentControl/PPE%20Data%20Approvals/Forms/AllItems.aspx?id=',\r\n  encodeUriComponent(concat(\r\n    '/sites/DocumentControl/PPE Data Approvals/',\r\n    items('Apply_to_each_document')?['{FilenameWithExtension}']\r\n  )),\r\n  '&parent=%2Fsites%2FDocumentControl%2FPPE%20Data%20Approvals'\r\n)",
+                          "metadata": {
+                            "operationMetadataId": "617de517-e9ee-49d2-9294-0892bdfa3673"
+                          }
+                        }
+                      },
+                      "case": "PPE Data Approvals"
+                    }
+                  },
+                  "metadata": {
+                    "operationMetadataId": "d704ffee-4300-4ab1-b003-fef228f6a130"
+                  }
+                },
+                "Compose_SharePointLink": {
+                  "type": "Compose",
+                  "inputs": "@concat(variables('varDirectFileURL'), '/', items('Apply_to_each_document')?['FileLeafRef'])\r\n",
+                  "runAfter": {
+                    "Switch_2": [
+                      "Succeeded"
+                    ]
+                  },
+                  "metadata": {
+                    "operationMetadataId": "e223554d-c23f-4c1b-bb61-4e0f4dc104a8"
+                  }
+                },
+                "Append_to_array_variable": {
+                  "type": "AppendToArrayVariable",
+                  "inputs": {
+                    "name": "DocIDs",
+                    "value": "@items('Apply_to_each_document')?['ID']"
+                  },
+                  "runAfter": {
+                    "Compose_SharePointLink": [
+                      "Succeeded"
+                    ]
+                  },
+                  "metadata": {
+                    "operationMetadataId": "c421a964-bcbb-4b5a-9475-5e710f655ff0"
+                  }
+                },
+                "ComposeAppLink": {
+                  "type": "Compose",
+                  "inputs": "@{concat(\r\n  'https://apps.powerapps.com/play/e/fe678d2a-620b-ef29-b7a7-9c1c525eca51/a/33dfb6fd-6356-4dc3-91dc-f67c065b99e2?tenantId=4c5b02da-9e6a-40bf-8360-6fd95fe56b26&email=',\r\n  items('Apply_to_each_document')?['Approver']\r\n)\r\n}\n",
+                  "runAfter": {
+                    "Append_to_string_variable": [
+                      "Succeeded"
+                    ]
+                  },
+                  "metadata": {
+                    "operationMetadataId": "d1c19567-49d0-4e58-8b63-7ced7858396f"
+                  }
+                },
+                "Set_variable": {
+                  "type": "SetVariable",
+                  "inputs": {
+                    "name": "varAppLinkBody",
+                    "value": "@outputs('ComposeAppLink')"
+                  },
+                  "runAfter": {
+                    "ComposeAppLink": [
+                      "Succeeded"
+                    ]
+                  },
+                  "metadata": {
+                    "operationMetadataId": "a45d6a00-b22d-4918-8063-d91948f64614"
+                  }
+                }
+              },
+              "runAfter": {
+                "Get_files_(properties_only)": [
+                  "Succeeded"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "3c3b7a69-98d0-44a4-b126-bbf4cd837350"
+              }
+            },
+            "Get_files_(properties_only)": {
+              "type": "OpenApiConnection",
+              "inputs": {
+                "parameters": {
+                  "dataset": "https://ppetechcoza.sharepoint.com/sites/DocumentControl",
+                  "table": "0bf71607-6974-4bdb-8d31-4713f062f7ea",
+                  "$filter": "@outputs('Compose_ODataFilter')"
+                },
+                "host": {
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                  "operationId": "GetFileItems",
+                  "connectionName": "shared_sharepointonline"
+                }
+              },
+              "runAfter": {
+                "Compose": [
+                  "Succeeded"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "d8b9a8da-499a-45af-96f1-a17f79990057"
+              }
+            },
+            "Parse_DocIDs": {
+              "type": "Compose",
+              "inputs": "@split(triggerBody()?['crafe_docids'], ',')\r\n",
+              "metadata": {
+                "operationMetadataId": "fbcd3c53-5b4c-4b80-9263-01a47e128b4c"
+              }
+            },
+            "Compose": {
+              "type": "Compose",
+              "inputs": "@replace(replace(replace(outputs('Compose_ODataFilter'), '{\"\": \"', ''), '\"}', ''), '\"} or {\"\" : \"', ' or ')\r\n",
+              "runAfter": {
+                "Compose_ODataFilter": [
+                  "Succeeded"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "57af49f5-f378-4e32-a45e-10c4150b15be"
+              }
+            },
+            "Compose_Test": {
+              "type": "Compose",
+              "inputs": "@triggerOutputs()?['body']",
+              "runAfter": {
+                "ParseDocIDs": [
+                  "Succeeded"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "f72eb1d1-682b-4404-85ee-4bcdd7f24766"
+              }
+            },
+            "Append_to_string_variable_1": {
+              "type": "AppendToStringVariable",
+              "inputs": {
+                "name": "varAppLinkBody",
+                "value": "<p>\n  <a href=\"https://apps.powerapps.com/play/e/default-4c5b02da-9e6a-40bf-8360-6fd95fe56b26/a/a8108514-cbef-417b-b60c-dd0001a4317c\n?tenantId=4c5b02da-9e6a-40bf-8360-6fd95fe56b26\n&hint=53aa4bc1-6941-4709-96ae-2a4d68c2f6f6\n&sourcetime=@{utcNow()}\n&docids=@{outputs('Encoded_DocIDs')}\n&library=@{variables('varLibraryName')}\n&email=@{uriComponent(outputs('ComposeCleanEmails'))}\">\n✅ Click here to open the Approval App\n</a>\n</p>\n\n\n\n\n\n\n\n"
+              },
+              "runAfter": {
+                "Encoded_DocIDs": [
+                  "Succeeded"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "3e3fdf35-7644-4510-8b61-c6a06ef6a17d"
+              }
+            },
+            "JoinDocIDs": {
+              "type": "Compose",
+              "inputs": "@join(outputs('Parse_DocIDs'), ',')\r\n",
+              "runAfter": {
+                "Parse_DocIDs": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Encoded_DocIDs": {
+              "type": "Compose",
+              "inputs": "@uriComponent(outputs('JoinDocIDs'))\r\n",
+              "runAfter": {
+                "ComposeCleanEmails": [
+                  "Succeeded"
+                ]
+              }
+            }
+          },
+          "else": {
+            "actions": {}
+          },
+          "runAfter": {
+            "Initialize_variable": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "28e0f6b8-6c72-4cc6-ba19-9d8a551bf246"
+          }
+        },
+        "varHasDocuments": {
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "varHasDocuments",
+                "type": "boolean",
+                "value": false
+              }
+            ]
+          },
+          "runAfter": {
+            "Switch_1": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "57a57855-5bab-4c67-b98b-ad4292422b1a"
+          }
+        },
+        "Initialize_variable": {
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "varEmailBody",
+                "type": "string"
+              }
+            ]
+          },
+          "runAfter": {
+            "varHasDocuments": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "022b345c-e2ab-44dc-abac-408915b053f5"
+          }
+        },
+        "Compose_Reviewers": {
+          "type": "Compose",
+          "inputs": "@outputs('Get_a_row_by_ID')?['body/crafe_currentreviewer']\r\n",
+          "runAfter": {
+            "Compose_Documents": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "b571709e-8855-4807-9a8d-b736280e4d26"
+          }
+        },
+        "Initialize_variable_1": {
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "varCleanedEmails",
+                "type": "string"
+              }
+            ]
+          },
+          "runAfter": {
+            "Initialize_variable_6": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "1865d29f-4983-44af-8c11-60e0c74d8bb0"
+          }
+        },
+        "Compose_TriggerValues": {
+          "type": "Compose",
+          "inputs": "@triggerOutputs()?['body/columnName']",
+          "runAfter": {
+            "Initialize_variable_4": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "861de741-d96e-4544-b46d-791d1b0860a0"
+          }
+        },
+        "Initialize_variable_2": {
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "varEmailBody1",
+                "type": "string"
+              }
+            ]
+          },
+          "runAfter": {
+            "Initialize_variable_1": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "148fa476-a69f-48a4-93ab-7cb3e64a5f57"
+          }
+        },
+        "Initialize_variable_3": {
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "varDirectFileURL",
+                "type": "string"
+              }
+            ]
+          },
+          "runAfter": {
+            "Initialize_variable_2": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "22567d6c-b9d1-40fe-8663-e5c1140eea26"
+          }
+        },
+        "Switch_1": {
+          "type": "Switch",
+          "expression": "@triggerBody()?['crafe_libraryname']\n",
+          "default": {
+            "actions": {}
+          },
+          "cases": {
+            "Case 2": {
+              "actions": {
+                "Fluor_Vendor_Data_Approvals": {
+                  "type": "SetVariable",
+                  "inputs": {
+                    "name": "varLibraryName",
+                    "value": "0bf71607-6974-4bdb-8d31-4713f062f7ea"
+                  },
+                  "metadata": {
+                    "operationMetadataId": "4a7c2c7b-e68a-4fe8-9ea2-c327211a8d64"
+                  }
+                }
+              },
+              "case": "Fluor Vendor Data Approvals"
+            },
+            "Case 3": {
+              "actions": {
+                "Vendor_2_Data_Approvals": {
+                  "type": "SetVariable",
+                  "inputs": {
+                    "name": "varLibraryName",
+                    "value": "6b27ca41-d1ca-4cf6-90c4-c3cd6dc6148c\n"
+                  },
+                  "metadata": {
+                    "operationMetadataId": "fafde2a2-8df2-450f-b34e-4171b21514d2"
+                  }
+                }
+              },
+              "case": "Vendor 2 Data Approvals"
+            },
+            "Case 4": {
+              "actions": {
+                "PPE_Data_Approvals": {
+                  "type": "SetVariable",
+                  "inputs": {
+                    "name": "varLibraryName",
+                    "value": "8c95ccb5-4656-4808-92f5-ebd6c4ab73aa\n"
+                  },
+                  "metadata": {
+                    "operationMetadataId": "7591d590-ce4d-49d1-945e-402bd04c7480"
+                  }
+                }
+              },
+              "case": "PPE Data Approvals"
+            }
+          },
+          "runAfter": {
+            "Initialize_variable_7": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "c2e76e98-39d0-4495-b68c-115a9561399b"
+          }
+        },
+        "Initialize_variable_6": {
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "DocIDs",
+                "type": "array",
+                "value": []
+              }
+            ]
+          },
+          "runAfter": {
+            "Get_a_row_by_ID": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "4dad1e5a-eea8-4a68-a5b6-9a5ef337a266"
+          }
+        },
+        "Initialize_variable_4": {
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "varAppLinkBody",
+                "type": "string"
+              }
+            ]
+          },
+          "runAfter": {
+            "Initialize_variable_3": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "5f3f58ca-2233-4c22-a552-def31b06d732"
+          }
+        },
+        "Compose_LibraryName": {
+          "type": "Compose",
+          "inputs": "@triggerBody()?['new_libraryname']",
+          "runAfter": {
+            "Initialize_variable_5": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "46989996-00e8-4110-be6a-1e83c58158d7"
+          }
+        },
+        "Initialize_variable_5": {
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "varLibraryName",
+                "type": "string"
+              }
+            ]
+          },
+          "runAfter": {
+            "Compose_Reviewers": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "b4d8fc87-355d-4abd-8638-da94d9e4d926"
+          }
+        },
+        "Initialize_variable_7": {
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "varDocIDs",
+                "type": "string"
+              }
+            ]
+          },
+          "runAfter": {
+            "Compose_LibraryName": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "3cdfa59b-6862-4512-a70c-6e0ed301cc25"
+          }
+        },
+        "Get_a_row_by_ID": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "parameters": {
+              "entityName": "crafe_flowrequestsppes",
+              "recordId": "@triggerOutputs()?['body/crafe_flowrequestsppeid']"
+            },
+            "host": {
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+              "operationId": "GetItem",
+              "connectionName": "shared_commondataserviceforapps"
+            }
+          },
+          "runAfter": {}
+        }
+      },
+      "outputs": {}
+    },
+    "templateName": null
+  },
+  "schemaVersion": "1.0.0.0"
+}
